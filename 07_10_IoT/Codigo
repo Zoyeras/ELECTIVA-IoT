@@ -1,109 +1,93 @@
 #include <DHT.h>
 
-const int pinPIR = 3;
-const int pinBuzzer = 16;
-const int pinDHT = 2;
-const int pinLDR = A0;
+#define SENSOR_MOV 3
+#define ZUMBADOR 16
+#define SENSOR_DHT 2
+#define SENSOR_LUZ A0
 
-const int ledsRojos[] = {9, 10, 11, 12, 13};
-const int numLedsRojos = 5;
+const uint8_t pinesRojos[] = {9, 10, 11, 12, 13};
+const uint8_t CANT_ROJOS = 5;
 
-const int ledCian = 5;
-const int ledMorado = 18;
-const int ledAmarillo = 19;
+#define LED_MOV 5
+#define LED_TEMP 18
+#define LED_HUM 19
 
-#define DHTTYPE DHT22
-DHT dht(pinDHT, DHTTYPE);
+DHT dht22(SENSOR_DHT, DHT22);
 
-int estadoPIR = LOW;
-unsigned long tiempoMovimiento = 0;
-const unsigned long duracionMovimiento = 2000;
-
-unsigned long ultimaLecturaDHT = 0;
-float temperatura = 0;
-float humedad = 0;
+uint32_t temporizadorMov = 0;
+uint32_t temporizadorDHT = 0;
 
 void setup() {
   Serial.begin(9600);
-  pinMode(pinPIR, INPUT);
-  pinMode(pinBuzzer, OUTPUT);
   
-  for (int i = 0; i < numLedsRojos; i++) {
-    pinMode(ledsRojos[i], OUTPUT);
+  pinMode(SENSOR_MOV, INPUT);
+  pinMode(ZUMBADOR, OUTPUT);
+  
+  for (uint8_t pin : pinesRojos) {
+    pinMode(pin, OUTPUT);
   }
 
-  pinMode(ledCian, OUTPUT);
-  pinMode(ledMorado, OUTPUT);
-  pinMode(ledAmarillo, OUTPUT);
+  pinMode(LED_MOV, OUTPUT);
+  pinMode(LED_TEMP, OUTPUT);
+  pinMode(LED_HUM, OUTPUT);
 
-  dht.begin();
+  dht22.begin();
+}
+
+// Función auxiliar para no repetir código de parpadeo
+void parpadearLed(uint8_t pin, int tiempo) {
+  digitalWrite(pin, HIGH);
+  delay(tiempo);
+  digitalWrite(pin, LOW);
+  delay(tiempo);
 }
 
 void loop() {
-  int valorLuz = analogRead(pinLDR); 
-  int ledsAEncender = map(valorLuz, 0, 1023, 5, 1); 
-  ledsAEncender = constrain(ledsAEncender, 1, 5);
+  // 1. Control de LDR y LEDs rojos
+  int nivelLuz = analogRead(SENSOR_LUZ); 
+  int limiteLeds = map(nivelLuz, 0, 1023, CANT_ROJOS, 1); 
+  limiteLeds = constrain(limiteLeds, 1, CANT_ROJOS);
 
-  for (int i = 0; i < numLedsRojos; i++) {
-    if (i < ledsAEncender) {
-      digitalWrite(ledsRojos[i], HIGH);
-    } else {
-      digitalWrite(ledsRojos[i], LOW);
-    }
+  for (int i = 0; i < CANT_ROJOS; i++) {
+    // Operador ternario para resumir el if/else
+    digitalWrite(pinesRojos[i], (i < limiteLeds) ? HIGH : LOW);
   }
 
-  int lecturaPIR = digitalRead(pinPIR);
-
-  if (lecturaPIR == HIGH) {
-    digitalWrite(ledCian, HIGH);
-    tone(pinBuzzer, 1000);
-    tiempoMovimiento = millis();
-  } else {
-    if (millis() - tiempoMovimiento >= duracionMovimiento) {
-      digitalWrite(ledCian, LOW);
-      noTone(pinBuzzer);
-    }
+  // 2. Control de movimiento (PIR)
+  if (digitalRead(SENSOR_MOV)) {
+    digitalWrite(LED_MOV, HIGH);
+    tone(ZUMBADOR, 1000);
+    temporizadorMov = millis();
+  } else if (millis() - temporizadorMov >= 2000) {
+    digitalWrite(LED_MOV, LOW);
+    noTone(ZUMBADOR);
   }
 
-  if (millis() - ultimaLecturaDHT >= 2000) {
-    ultimaLecturaDHT = millis();
-    temperatura = dht.readTemperature();
-    humedad = dht.readHumidity();
+  // 3. Control de Temperatura y Humedad
+  if (millis() - temporizadorDHT >= 2000) {
+    temporizadorDHT = millis();
+    float temp = dht22.readTemperature();
+    float hum = dht22.readHumidity();
 
-    if (!isnan(temperatura) && !isnan(humedad)) {
+    if (!isnan(temp) && !isnan(hum)) {
       
-      if (temperatura < 0) {
-        digitalWrite(ledMorado, HIGH);
-        delay(250);
-        digitalWrite(ledMorado, LOW);
-        delay(250);
-      } 
-      else if (temperatura >= 0 && temperatura <= 35) {
-        digitalWrite(ledMorado, HIGH);
-      } 
-      else {
-        digitalWrite(ledMorado, HIGH);
-        delay(50);
-        digitalWrite(ledMorado, LOW);
-        delay(50);
+      // Lógica de Temperatura
+      if (temp < 0) {
+        parpadearLed(LED_TEMP, 250);
+      } else if (temp <= 35) { 
+        digitalWrite(LED_TEMP, HIGH);
+      } else {
+        parpadearLed(LED_TEMP, 50);
       }
 
-      if (humedad < 30) {
-        digitalWrite(ledAmarillo, HIGH);
-        delay(250);
-        digitalWrite(ledAmarillo, LOW);
-        delay(250);
-      } 
-      else if (humedad >= 30 && humedad <= 70) {
-        digitalWrite(ledAmarillo, HIGH);
-      } 
-      else {
-        digitalWrite(ledAmarillo, HIGH);
-        delay(50);
-        digitalWrite(ledAmarillo, LOW);
-        delay(50);
+      // Lógica de Humedad
+      if (hum < 30) {
+        parpadearLed(LED_HUM, 250);
+      } else if (hum <= 70) { 
+        digitalWrite(LED_HUM, HIGH);
+      } else {
+        parpadearLed(LED_HUM, 50);
       }
-      
     }
   }
 
